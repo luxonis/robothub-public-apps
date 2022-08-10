@@ -1,0 +1,10 @@
+version: '1.1.0' # required
+image: luxonis/speedtest # required
+name: RobotHub Speedtest # required
+description: Run internet speedtest on the robot. # required
+language: python # optional (visible in UI)
+url: https://github.com/luxonis/robothub-apps
+prerequisites: # The following is just an example, ignored by our server at the moment
+  stereoDepth: false # Optional - true -> only OAK-D cameras are allowed
+  chipset: ['myriad', 'keembay'] # Optional - allows filtering by generation
+  camera: ['OAK-D-Lite'] # Optional - allows filtering specific camera models
