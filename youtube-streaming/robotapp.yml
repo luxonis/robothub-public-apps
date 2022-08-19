@@ -36,4 +36,4 @@ configuration:
         label: Right 720p30
 
     description: >-
-      Definition if the exact camera socket, resolution and fps used for the streaming.
+      Definition of the exact camera socket, resolution and fps used for the streaming.
