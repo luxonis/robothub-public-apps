@@ -1,0 +1,5 @@
+{
+    "nn_config": {
+        "output_format" : "recognition"
+    }
+}
