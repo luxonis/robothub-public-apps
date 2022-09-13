@@ -1,0 +1,59 @@
+version: '1.1.0' # required
+image: luxonis/hand-tracker # required
+name: RobotHub hand tracker # required
+description: Runs Hand Detection model and sends Image to Hub on making fist. # required
+language: python # optional (visible in UI)
+url: https://github.com/luxonis/robothub-apps
+prerequisites: # The following is just an example, ignored by our server at the moment
+  stereoDepth: True # Optional - true -> only OAK-D cameras are allowed
+  chipset: ['myriad', 'keembay'] # Optional - allows filtering by generation
+configuration:
+  landmark_model:
+    label: 'Hand Landmark model'
+    type: 'choice'
+    default: lite
+    options:
+      -
+        key: lite
+        label: 'LANDMARK_MODEL_LITE'
+      -
+        key: full
+        label: 'LANDMARK_MODEL_FULL'
+      -
+        key: sparse
+        label: 'LANDMARK_MODEL_SPARSE'
+  use_world_landmarks:
+    label: 'coordinates expressed in meters in the world, stored in hand.world_landmarks 
+                    only if use_world_landmarks is True'
+    type: 'boolean'
+    default: false
+  use_gesture:
+    label: 'when True, recognize hand poses froma predefined set of poses
+                    (ONE, TWO, THREE, FOUR, FIVE, OK, PEACE, FIST)'
+    type: 'boolean'
+    default: true
+  all_hands:
+    label: 'when False, consider only hands for which the wrist keypoint is above the elbow keypoint.'
+    type: 'boolean'
+    default: true
+  single_hand_tolerance_thresh:
+    label: 'Set the threshold to skip looking for second hand'
+    type: 'num-range'
+    step: 3
+    min: 5
+    max: 30
+    default: 10 # 
+  lm_nb_threads:
+    label: '1 or 2 (default=2), number of inference threads for the landmark model'
+    type: 'num-range'
+    step: 1
+    min: 1
+    max: 2
+    default: 2 # 2 threads
+  trace:
+    label: 'int, 0 = no trace, trace == 1, print application level info,trace == 2, print lower level info like when a message is sent or received by the manager script node and if trace==3, both application and low level info are displayed.  '
+    type: 'num-range'
+    step: 1
+    min: 0
+    max: 3
+    default: 0  # No Trace
