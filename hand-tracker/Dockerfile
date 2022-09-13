@@ -23,11 +23,9 @@ ENV ROS_DISTRO galactic
 # install ros2 packages and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ros-base \
-    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     libboost-python-dev \
     ros-${ROS_DISTRO}-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
-
 
 RUN pip3 install -U opencv-python-headless
 
@@ -46,11 +44,14 @@ RUN apt update && apt install -q -y --no-install-recommends \
     gcc \
     libc-dev \
     iputils-ping \
+    git \
     python3-opencv
 
-# RUN pip3 install netifaces
-# RUN pip3 install ssdpy
-# RUN pip3 install requests
+WORKDIR /home
+RUN mkdir -p dai_ws/src && RUN git clone https://github.com/luxonis/depthai-ros.git --branch hand-landmark && \
+        cd .. && source "/opt/ros/$ROS_DISTRO/setup.bash" && colcon build --packages-select depthai_ros_msgs
+
+
 
 ADD FPS.py FPS.py
 ADD HandTrackerBpfEdge.py HandTrackerBpfEdge.py
