@@ -1,0 +1,3 @@
+[submodule "hand-tracker/robothub-sdk"]
+	path = hand-tracker/robothub-sdk
+	url = git@github.com:luxonis/robothub-sdk.git

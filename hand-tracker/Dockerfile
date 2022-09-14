@@ -1,5 +1,28 @@
 FROM ros:galactic-ros-base-focal as base
 
+
+RUN apt-get update && \
+    apt-get install -q -y --no-install-recommends python3 python3-dev python3-pip python3-numpy ca-certificates ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-vision-msgs libboost-python-dev 
+
+RUN sudo apt install -y \
+  build-essential \
+  cmake \
+  git \
+  python3-colcon-common-extensions \
+  python3-pip \
+  python3-rosdep \
+  python3-setuptools \
+  python
+
+    # rm -rf /var/lib/apt/lists/*
+
+WORKDIR /home
+RUN mkdir -p dai_ws/src && cd dai_ws/src && git clone --depth=1 --branch hand-landmark  https://github.com/luxonis/depthai-ros.git
+RUN pwd
+RUN cd dai_ws && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && pwd &&\
+ colcon build --parallel-workers 3 --packages-select depthai_ros_msgs --event-handler console_direct+"
+
+# RUN 
 # Python will buffer output in case of non interactive terminals and we don't want that, because it delays logs
 ENV PYTHONPATH=/lib \
     PYTHONUNBUFFERED=1 \
@@ -7,10 +30,6 @@ ENV PYTHONPATH=/lib \
 
 ARG DEPTHAI_BRANCH=main
 
-# setup timezone
-RUN apt-get update && \
-    apt-get install -q -y --no-install-recommends python3 python3-pip python3-numpy ca-certificates ros-${ROS_DISTRO}-cv-bridge libboost-python-dev && \
-    rm -rf /var/lib/apt/lists/*
 
 FROM base as build
 RUN apt-get update && apt-get install -q -y --no-install-recommends wget build-essential cmake pkg-config git
@@ -24,7 +43,6 @@ RUN tar xf libusb.tar.bz2 \
     && make -j$(nproc) \
     && make install
 
-RUN apt-get install -q -y --no-install-recommends python3-dev
 # RUN cd depthai-python \
 #     && cmake -H. -B build -D CMAKE_BUILD_TYPE=Release -D DEPTHAI_ENABLE_BACKWARD=OFF \
 #     && cmake --build build --parallel $(nproc)
@@ -58,7 +76,7 @@ COPY --from=stage / /
 
 ADD ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-ADD src/robothub_sdk /lib/robothub_sdk
+ADD robothub-sdk/robothub_sdk/src/robothub_sdk /lib/robothub_sdk
 
 
 ADD models models
@@ -67,17 +85,12 @@ RUN apt update && apt install -q -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /home
-RUN mkdir -p dai_ws/src && RUN git clone https://github.com/luxonis/depthai-ros.git --branch hand-landmark && \
-        cd .. && source "/opt/ros/$ROS_DISTRO/setup.bash" && colcon build --parallel-workers 4 --packages-select depthai_ros_msgs --
-
 ADD FPS.py FPS.py
 ADD HandTrackerBpfEdge.py HandTrackerBpfEdge.py
 ADD HandTrackerRenderer.py HandTrackerRenderer.py
 ADD mediapipe_utils.py mediapipe_utils.py
 
 # Add as separate layer, since it changes often
-
 ENTRYPOINT ["docker-entrypoint.sh"]
 ARG FILE=app.py
 ADD $FILE run.py
