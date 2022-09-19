@@ -234,18 +234,19 @@ class HandTrackerBpf:
 
         # Define and start pipeline
         usb_speed = self.device.usb_speed
-        self.device.startPipeline(self.create_pipeline())
+        self.create_pipeline()
         print(f"Pipeline started - USB speed: {str(usb_speed).split('.')[-1]}")
 
-        # Define data queues 
+    def setupQueue(self):
+                # Define data queues 
         if not self.laconic:
-            self.q_video = self.device.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
-        self.q_manager_out = self.device.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
+            self.q_video = self.device.internal.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
+        self.q_manager_out = self.device.internal.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
         # For showing outputs of ImageManip nodes (debugging)
         if self.trace & 4:
-            self.q_pre_body_manip_out = self.device.getOutputQueue(name="pre_body_manip_out", maxSize=1, blocking=False)
-            self.q_pre_pd_manip_out = self.device.getOutputQueue(name="pre_pd_manip_out", maxSize=1, blocking=False)
-            self.q_pre_lm_manip_out = self.device.getOutputQueue(name="pre_lm_manip_out", maxSize=1, blocking=False)    
+            self.q_pre_body_manip_out = self.device.internal.getOutputQueue(name="pre_body_manip_out", maxSize=1, blocking=False)
+            self.q_pre_pd_manip_out = self.device.internal.getOutputQueue(name="pre_pd_manip_out", maxSize=1, blocking=False)
+            self.q_pre_lm_manip_out = self.device.internal.getOutputQueue(name="pre_lm_manip_out", maxSize=1, blocking=False)    
 
         self.fps = FPS()
 
@@ -270,9 +271,9 @@ class HandTrackerBpf:
 
  
         if self.resolution[0] == 1920:
-            sensorRes = dai.ColorCameraProperties.SensorResolution.THE_1080_P
+            sensorRes = CameraResolution.THE_1080_P
         else:
-            sensorRes = dai.ColorCameraProperties.SensorResolution.THE_4_K
+            sensorRes = CameraResolution.THE_4_K
         # cam.setBoardSocket(dai.CameraBoardSocket.RGB)
         # cam.setInterleaved(False)
         # cam.setIspScale(self.scale_nd[0], self.scale_nd[1])
@@ -304,17 +305,20 @@ class HandTrackerBpf:
         # TODO(Sachin): Come back and strucutre the node script with details from below 
         # manager_script = pipeline.create(dai.node.Script)
         # manager_script.setScript(self.build_manager_script(),)
+        script_code = self.build_manager_script()
+        print(type(script_code))
+        manager_script = self.device.create_script(script_code, name='hand_manager')
 
         if self.xyz:
             print("Creating MonoCameras, Stereo and SpatialLocationCalculator nodes...")
             # For now, RGB needs fixed focus to properly align with depth.
             # The value used during calibration should be used here
-            calib_data = self.device.readCalibration()
+            calib_data = self.device.internal.readCalibration()
             calib_lens_pos = calib_data.getLensPosition(dai.CameraBoardSocket.RGB)
             print(f"Can't set lens position on RoboHub yet: {calib_lens_pos}")
             cam.initialControl.setManualFocus(calib_lens_pos)
             
-            mono_resolution = dai.MonoCameraProperties.SensorResolution.THE_400_P
+            mono_resolution = CameraResolution.THE_400_P
             self.device.configure_camera(dai.CameraBoardSocket.LEFT,
                                         res=mono_resolution,
                                         fps=self.internal_fps)
@@ -342,7 +346,6 @@ class HandTrackerBpf:
             # right.out.link(stereo.right)    
 
             stereo.depth.link(spatial_location_calculator.inputDepth)
-            manager_script = self.device.create_script(self.build_manager_script())
 
             manager_script.outputs['spatial_location_config'].link(spatial_location_calculator.inputConfig)
             spatial_location_calculator.out.link(manager_script.inputs['spatial_data'])            
@@ -431,7 +434,12 @@ class HandTrackerBpf:
         pre_lm_manip.out.link(lm_nn.input)
         lm_nn.out.link(manager_script.inputs['from_lm_nn'])
         
-        self.StillStream = self.device.color_still()
+        self.encoder = self.device.create_encoder(
+                        self.device.streams.color_still.output_node,
+                        fps=8,
+                        profile=dai.VideoEncoderProperties.Profile.MJPEG,
+                        quality=80,
+                    )
         print("Pipeline created.")
         # return pipeline        
     

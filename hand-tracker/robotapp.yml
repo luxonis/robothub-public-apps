@@ -23,37 +23,65 @@ configuration:
         key: sparse
         label: 'LANDMARK_MODEL_SPARSE'
   use_world_landmarks:
-    label: 'coordinates expressed in meters in the world, stored in hand.world_landmarks 
-                    only if use_world_landmarks is True'
+    label: 'use_world_landmarks'
     type: 'boolean'
     default: false
   use_gesture:
-    label: 'when True, recognize hand poses froma predefined set of poses
-                    (ONE, TWO, THREE, FOUR, FIVE, OK, PEACE, FIST)'
+    label: 'use_gesture'
     type: 'boolean'
     default: true
   all_hands:
-    label: 'when False, consider only hands for which the wrist keypoint is above the elbow keypoint.'
+    label: 'all_hands'
     type: 'boolean'
     default: true
   single_hand_tolerance_thresh:
-    label: 'Set the threshold to skip looking for second hand'
+    label: 'single_hand_tolerance_thresh'
     type: 'num-range'
     step: 3
     min: 5
     max: 30
     default: 10 # 
   lm_nb_threads:
-    label: '1 or 2 (default=2), number of inference threads for the landmark model'
+    label: 'lm_nb_threads'
     type: 'num-range'
     step: 1
     min: 1
     max: 2
     default: 2 # 2 threads
   trace:
-    label: 'int, 0 = no trace, trace == 1, print application level info,trace == 2, print lower level info like when a message is sent or received by the manager script node and if trace==3, both application and low level info are displayed.  '
+    label: 'trace'
     type: 'num-range'
     step: 1
     min: 0
     max: 3
     default: 0  # No Trace
+
+  resolution:
+    label: 'resolution'
+    type: 'choice'
+    default: full
+    options:
+      -
+        key: full
+        label: '1080_P_RES'
+      -
+        key: ultra
+        label: '4K_RES'
+  fps:
+    label: 'fps'
+    type: 'num-range'
+    step: 3
+    min: 0
+    max: 40
+    default: 30 
+  xyz:
+    label: 'xyz'
+    type: 'boolean'
+    default: true
+  internal_frame_height:
+    label: 'internal_frame_height'
+    type: 'num-range'
+    step: 640
+    min: 640
+    max: 1280
+    default: 640 
