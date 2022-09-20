@@ -169,7 +169,7 @@ class HandTrackerBpf:
         # Note that here (in Host mode), specifying "rgb_laconic" has no effect
         # Color camera frames are systematically transferred to the host
         self.input_type = "rgb" # OAK* internal color camera
-        self.laconic = "rgb_laconic" # Camera frames are not sent to the host
+        self.laconic = False # Camera frames are not sent to the host
         if resolution == "full":
             self.resolution = (1920, 1080)
         elif resolution == "ultra":
@@ -239,8 +239,8 @@ class HandTrackerBpf:
 
     def setupQueue(self):
                 # Define data queues 
-        if not self.laconic:
-            self.q_video = self.device.internal.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
+        # if not self.laconic:
+        #     self.q_video = self.device.internal.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
         self.q_manager_out = self.device.internal.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
         # For showing outputs of ImageManip nodes (debugging)
         if self.trace & 4:
@@ -295,11 +295,12 @@ class HandTrackerBpf:
 
         if not self.laconic:
             # TODO(sachin): add connections here
-            cam_out = self.device.pipeline.createXLinkOut()
-            cam_out.setStreamName("cam_out")
-            cam_out.input.setQueueSize(1)
-            cam_out.input.setBlocking(False)
-            cam.video.link(cam_out.input)
+            # cam_out = self.device.pipeline.createXLinkOut()
+            # cam_out.setStreamName("cam_out")
+            # cam_out.input.setQueueSize(1)
+            # cam_out.input.setBlocking(False)
+            # cam.video.link(cam_out.input)
+            self.device.streams.color_video.consume()
 # --------------------------------------------
 
         # TODO(Sachin): Come back and strucutre the node script with details from below 
@@ -517,7 +518,7 @@ class HandTrackerBpf:
 
         if self.use_gesture: mpu.recognize_gesture(hand)
 
-        return hand  
+        return hand
 
     def next_frame(self):
 
@@ -526,8 +527,8 @@ class HandTrackerBpf:
         if self.laconic:
             video_frame = np.zeros((self.img_h, self.img_w, 3), dtype=np.uint8)
         else:
-            in_video = self.q_video.get()
-            video_frame = in_video.getCvFrame()       
+            # in_video = self.q_video.get()
+            video_frame = self.device.streams.color_video.last_value.getCvFrame() if self.device.streams.color_video.last_value is not None else None      
 
         # For debugging
         if self.trace & 4:

@@ -75,6 +75,8 @@ class HandTracker(App):
             self.gotQueues = True
 
         frame, hands, bag = self.tracker.next_frame()
+        if frame is None:
+            return
         frame_vis = self.renderer.draw(frame, hands, bag)
         handMsgs = HandLandmarkArray()
         fistFound = False
@@ -111,12 +113,12 @@ class HandTracker(App):
         self.handsPublisher.publish(handMsgs)
 
         rclpy.spin_once(self.node)
-        if fistFound:
+        """ if fistFound:
             time.sleep(5)
             for camera_control in self.camera_controls:
                 ctl = dai.CameraControl()
                 ctl.setCaptureStill(True)
-                camera_control.send(ctl)
+                camera_control.send(ctl) """
 
 
         
