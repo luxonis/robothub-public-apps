@@ -44,10 +44,9 @@ class HandTracker(App):
         rclpy.init()
         self.node = rclpy.create_node('HandTracker')
         self.bridge = CvBridge()
-        self.imagePublisher = self.node.create_publisher(Image, 'depthai/image', 10)
-        self.overlayPublisher = self.node.create_publisher(Image, 'depthai/overlay_image', 10)
-        self.handsPublisher = self.node.create_publisher(HandLandmarkArray, 'depthai/handss_tracklets', 10)
-        
+        self._ros_executor = rclpy.executors.MultiThreadedExecutor(num_threads=2)
+        self._ros_executor.add_node(self.node)
+
         self.tracker = HandTrackerBpf(
             use_lm=True,
             lm_model=self.config.landmark_model,
@@ -60,6 +59,7 @@ class HandTracker(App):
             single_hand_tolerance_thresh=self.config.single_hand_tolerance_thresh,
             lm_nb_threads=self.config.lm_nb_threads,
             stats=True,
+            node = self.node,
             trace=self.config.trace,
             )
 
@@ -69,50 +69,50 @@ class HandTracker(App):
         self.renderer = HandTrackerRenderer(tracker=self.tracker)
     
     def on_update(self):
-        print('In Update...')
-        if not self.gotQueues:
-            self.tracker.setupQueue()
-            self.gotQueues = True
+        print('In Update Spinning...')
+        # if not self.gotQueues:
+        #     # self.tracker.setupQueue()
+        #     self.gotQueues = True
 
-        frame, hands, bag = self.tracker.next_frame()
-        if frame is None:
-            return
-        frame_vis = self.renderer.draw(frame, hands, bag)
-        handMsgs = HandLandmarkArray()
-        fistFound = False
+        # frame, hands, bag = self.tracker.next_frame()
+        # if frame is None:
+        #     return
+        # frame_vis = self.renderer.draw(frame, hands, bag)
+        # handMsgs = HandLandmarkArray()
+        # fistFound = False
 
-        for hand in hands:
-            local_msg = HandLandmark()
-            local_msg.label = hand.label
-            local_msg.lm_score = hand.lm_score
-            if hand.gesture != None:
-                local_msg.gesture = hand.gesture
-            else:
-                local_msg.gesture = ''
+        # for hand in hands:
+        #     local_msg = HandLandmark()
+        #     local_msg.label = hand.label
+        #     local_msg.lm_score = hand.lm_score
+        #     if hand.gesture != None:
+        #         local_msg.gesture = hand.gesture
+        #     else:
+        #         local_msg.gesture = ''
     
-            for x, y in hand.landmarks:
-                loc = Pose2D()
-                loc.x = x
-                loc.y = y
-                local_msg.landmark.append(loc)
-                x, y, z = hand.xyz
-                local_msg.is_spatial = True
-                local_msg.position.x = x
-                local_msg.position.y = y
-                local_msg.position.z = z
-            handMsgs.landmarks.append(local_msg)
+        #     for x, y in hand.landmarks:
+        #         loc = Pose2D()
+        #         loc.x = x
+        #         loc.y = y
+        #         local_msg.landmark.append(loc)
+        #         x, y, z = hand.xyz
+        #         local_msg.is_spatial = True
+        #         local_msg.position.x = x
+        #         local_msg.position.y = y
+        #         local_msg.position.z = z
+        #     handMsgs.landmarks.append(local_msg)
 
-            if hand.gesture == 'FIST':
-                fistFound = True
+        #     if hand.gesture == 'FIST':
+        #         fistFound = True
 
-        handMsgs.header.frame_id = ""
-        handMsgs.header.stamp = self.node.get_clock().now().to_msg()
+        # handMsgs.header.frame_id = ""
+        # handMsgs.header.stamp = self.node.get_clock().now().to_msg()
 
-        self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(frame))
-        self.overlayPublisher.publish(self.bridge.cv2_to_imgmsg(frame_vis))
-        self.handsPublisher.publish(handMsgs)
+        # self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(frame))
+        # # self.overlayPublisher.publish(self.bridge.cv2_to_imgmsg(frame_vis))
+        # self.handsPublisher.publish(handMsgs)
 
-        rclpy.spin_once(self.node)
+        self._ros_executor.spin_once(timeout_sec=0)
         """ if fistFound:
             time.sleep(5)
             for camera_control in self.camera_controls:

@@ -1,5 +1,7 @@
 import numpy as np
 from collections import namedtuple
+from functools import partial
+
 import mediapipe_utils as mpu
 import depthai as dai
 import cv2
@@ -9,9 +11,16 @@ import time
 import sys
 from string import Template
 import marshal
-from robothub_sdk import App, CameraResolution, StreamType, Config, router, Request, PUBLIC_DIR
+from robothub_sdk import App, CameraResolution, StreamType, Config, router, Request, PUBLIC_DIR, Stream
 from robothub_sdk.device import Device
+
+# Message imports
+from sensor_msgs.msg import Image
+from depthai_ros_msgs.msg import HandLandmarkArray, HandLandmark
 from std_msgs.msg import Header, ColorRGBA, String
+from geometry_msgs.msg import Pose2D
+from cv_bridge import CvBridge
+import builtin_interfaces.msg
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PALM_DETECTION_MODEL = str(SCRIPT_DIR / "models/palm_detection_sh4.blob")
@@ -108,9 +117,12 @@ class HandTrackerBpf:
                 use_same_image=True,
                 lm_nb_threads=2,
                 stats=False,
+                node = None,
                 trace=0
                 ):
-
+        if node == None:
+            raise ValueError("Exiting due to Missing ROS2 node argument. Create a rclpy.create_node() and pass it.")
+        self.bridge = CvBridge()
         self.use_lm = use_lm
         if not use_lm:
             print("use_lm=False is not supported in Edge mode.")
@@ -162,14 +174,65 @@ class HandTrackerBpf:
         self.use_gesture = use_gesture
         self.single_hand_tolerance_thresh = single_hand_tolerance_thresh
         self.use_same_image = use_same_image
+        self.image_publisher = self.node.create_publisher(Image, 'depthai/image', 10)
+        self.hands_publisher = self.node.create_publisher(HandLandmarkArray, 'depthai/handss_tracklets', 10)
+        # self.overlayPublisher = self.node.create_publisher(Image, 'depthai/overlay_image', 10)
+
+    def create_timestamp(self, ts: timedelta) -> builtin_interfaces.msg.Time:
+        ts = ts + self._clock_offset
+        sec = ts.total_seconds()
+        ros_ts = builtin_interfaces.msg.Time(
+            sec=int(sec),
+            nanosec=int((sec - int(sec)) * 1_000_000_000),
+        )
+        return ros_ts
+
+    def publish_frame(self, frame_id, publisher, frame ) -> None:
+        timestamp = self.create_timestamp(frame.getTimestamp())
+        image_msg = self.bridge.cv2_to_imgmsg(frame)
+        image_msg.header = Header(stamp=timestamp, frame_id=frame_id)
+        publisher.publish(image_msg)
+
+    def publish_hands(self, frame_id, publisher, dai_hand) -> None:
+        timestamp = self.create_timestamp(dai_hand.getTimestamp())
+        res = marshal.loads(dai_hand.getData())
+        handMsgs = HandLandmarkArray()
+
+        for i in range(len(res.get("lm_score",[]))):
+            hand = self.extract_hand_data(res, i)
+            local_msg = HandLandmark()
+            local_msg.label = hand.label
+            local_msg.lm_score = hand.lm_score
+            if hand.gesture != None:
+                local_msg.gesture = hand.gesture
+            else:
+                local_msg.gesture = ''
+    
+            for x, y in hand.landmarks:
+                loc = Pose2D()
+                loc.x = x
+                loc.y = y
+                local_msg.landmark.append(loc)
+                x, y, z = hand.xyz
+                local_msg.is_spatial = True
+                local_msg.position.x = x
+                local_msg.position.y = y
+                local_msg.position.z = z
+            handMsgs.landmarks.append(local_msg)
+            if hand.gesture == 'FIST':
+                fistFound = True
         
+        handMsgs.header.frame_id = frame_id
+        handMsgs.header.stamp = timestamp
+        publisher.publish(handMsgs)
+
     def setup(self, device, resolution, internal_fps, xyz, internal_frame_height):
         self.device = device
 
         # Note that here (in Host mode), specifying "rgb_laconic" has no effect
         # Color camera frames are systematically transferred to the host
         self.input_type = "rgb" # OAK* internal color camera
-        self.laconic = False # Camera frames are not sent to the host
+        # self.laconic = False # Camera frames are not sent to the host
         if resolution == "full":
             self.resolution = (1920, 1080)
         elif resolution == "ultra":
@@ -237,16 +300,27 @@ class HandTrackerBpf:
         self.create_pipeline()
         print(f"Pipeline started - USB speed: {str(usb_speed).split('.')[-1]}")
 
+        self.fps = FPS()
+
+        self.nb_frames_body_inference = 0
+        self.nb_frames_pd_inference = 0
+        self.nb_frames_lm_inference = 0
+        self.nb_lm_inferences = 0
+        self.nb_failed_lm_inferences = 0
+        self.nb_frames_lm_inference_after_landmarks_ROI = 0
+        self.nb_frames_no_hand = 0
+
+
     def setupQueue(self):
                 # Define data queues 
         # if not self.laconic:
         #     self.q_video = self.device.internal.getOutputQueue(name="cam_out", maxSize=1, blocking=False)
-        self.q_manager_out = self.device.internal.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
-        # For showing outputs of ImageManip nodes (debugging)
-        if self.trace & 4:
-            self.q_pre_body_manip_out = self.device.internal.getOutputQueue(name="pre_body_manip_out", maxSize=1, blocking=False)
-            self.q_pre_pd_manip_out = self.device.internal.getOutputQueue(name="pre_pd_manip_out", maxSize=1, blocking=False)
-            self.q_pre_lm_manip_out = self.device.internal.getOutputQueue(name="pre_lm_manip_out", maxSize=1, blocking=False)    
+        # self.q_manager_out = self.device.internal.getOutputQueue(name="manager_out", maxSize=1, blocking=False)
+        # # For showing outputs of ImageManip nodes (debugging)
+        # if self.trace & 4:
+        #     self.q_pre_body_manip_out = self.device.internal.getOutputQueue(name="pre_body_manip_out", maxSize=1, blocking=False)
+        #     self.q_pre_pd_manip_out = self.device.internal.getOutputQueue(name="pre_pd_manip_out", maxSize=1, blocking=False)
+        #     self.q_pre_lm_manip_out = self.device.internal.getOutputQueue(name="pre_lm_manip_out", maxSize=1, blocking=False)    
 
         self.fps = FPS()
 
@@ -281,8 +355,6 @@ class HandTrackerBpf:
 
         
         if self.crop:
-            # cam.setVideoSize(self.frame_size, self.frame_size)
-            # cam.setPreviewSize(self.frame_size, self.frame_size)
             width = self.frame_size
             height = self.frame_size
         else:
@@ -292,16 +364,6 @@ class HandTrackerBpf:
             # cam.setPreviewSize(self.img_w, self.img_h)
 
         cam = self.device.configure_camera(dai.CameraBoardSocket.RGB, res=sensorRes, fps=self.internal_fps, preview_size=(width, height), video_size=(width, height), isp_scale = (self.scale_nd[0], self.scale_nd[1])) 
-
-        if not self.laconic:
-            # TODO(sachin): add connections here
-            # cam_out = self.device.pipeline.createXLinkOut()
-            # cam_out.setStreamName("cam_out")
-            # cam_out.input.setQueueSize(1)
-            # cam_out.input.setBlocking(False)
-            # cam.video.link(cam_out.input)
-            self.device.streams.color_video.consume()
-# --------------------------------------------
 
         # TODO(Sachin): Come back and strucutre the node script with details from below 
         # manager_script = pipeline.create(dai.node.Script)
@@ -354,7 +416,9 @@ class HandTrackerBpf:
         # Define body pose detection pre processing: resize preview to (self.body_input_length, self.body_input_length)
         # and transform BGR to RGB
         print("Creating Body Pose Detection pre processing image manip...")
-        pre_body_manip = self.device.pipeline.create(dai.node.ImageManip)
+        (pre_body_manip, pre_body_manip_stream) = self.device.create_image_manipulator()
+
+        # pre_body_manip = self.device.pipeline.create(dai.node.ImageManip)
         pre_body_manip.setMaxOutputFrameSize(self.body_input_length*self.body_input_length*3)
         pre_body_manip.setWaitForConfigInput(True)
         pre_body_manip.inputImage.setQueueSize(1)
@@ -363,21 +427,25 @@ class HandTrackerBpf:
         manager_script.outputs['pre_body_manip_cfg'].link(pre_body_manip.inputConfig)
         # For debugging
         if self.trace & 4:
-            pre_body_manip_out = self.device.pipeline.createXLinkOut()
-            pre_body_manip_out.setStreamName("pre_body_manip_out")
-            pre_body_manip.out.link(pre_body_manip_out.input)
+            # TODO(sachin): Add a callback for this. 
+            pre_body_manip_stream.consume()
 
         # Define landmark model
-        print("Creating Body Pose Detection Neural Network...")          
-        body_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
-        body_nn.setBlobPath(self.body_model)
+        self.pre_body_manip_stream = Stream(pre_body_manip, pre_body_manip.out, stream_type=StreamType.FRAME, description="pre_body_manip_cfg Out" )
+        print("Creating Body Pose Detection Neural Network...")
+        (body_nn, body_nn_det_out, body_nn_det_passthrough) = self.device.create_nn(self.pre_body_manip_stream, Path(self.body_model))
+
+        # body_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
+        # body_nn.setBlobPath(self.body_model)
         # lm_nn.setNumInferenceThreads(1)
-        pre_body_manip.out.link(body_nn.input)
+        # pre_body_manip.out.link(body_nn.input)
         body_nn.out.link(manager_script.inputs['from_body_nn'])
 
         # Define palm detection pre processing: resize preview to (self.pd_input_length, self.pd_input_length)
         print("Creating Palm Detection pre processing image manip...")
-        pre_pd_manip = self.device.pipeline.create(dai.node.ImageManip)
+        (pre_pd_manip, pre_pd_manip_stream) = self.device.create_image_manipulator()
+
+        # pre_pd_manip = self.device.pipeline.create(dai.node.ImageManip)
         pre_pd_manip.setMaxOutputFrameSize(self.pd_input_length*self.pd_input_length*3)
         pre_pd_manip.setWaitForConfigInput(True)
         pre_pd_manip.inputImage.setQueueSize(1)
@@ -387,32 +455,49 @@ class HandTrackerBpf:
 
         # For debugging
         if self.trace & 4:
-            pre_pd_manip_out = self.device.pipeline.createXLinkOut()
-            pre_pd_manip_out.setStreamName("pre_pd_manip_out")
-            pre_pd_manip.out.link(pre_pd_manip_out.input)
+            # TODO(sachin): Add a callback for this. 
+            pre_pd_manip_stream.consume()
+            # pre_pd_manip_out = self.device.pipeline.createXLinkOut()
+            # pre_pd_manip_out.setStreamName("pre_pd_manip_out")
+            # pre_pd_manip.out.link(pre_pd_manip_out.input)
 
         # Define palm detection model
         print("Creating Palm Detection Neural Network...")
-        pd_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
-        pd_nn.setBlobPath(self.pd_model)
-        pre_pd_manip.out.link(pd_nn.input)
+        self.pre_pd_manip_stream = Stream(pre_pd_manip, pre_pd_manip.out, stream_type=StreamType.FRAME, description="pre_pd_manip_cfg Out" )
+        (pd_nn, pd_nn_out, pd_nn_passthrough) = self.device.create_nn(self.pre_body_manip_stream, Path(self.pd_model))
+
+
+        # pd_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
+        # pd_nn.setBlobPath(self.pd_model)
+        # pre_pd_manip.out.link(pd_nn.input)
 
         # Define pose detection post processing "model"
         print("Creating Palm Detection post processing Neural Network...")
-        post_pd_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
-        post_pd_nn.setBlobPath(self.pp_model)
-        pd_nn.out.link(post_pd_nn.input)
+        (post_pd_nn, post_pd_nn_out, post_pd_nn_passthrough) = self.device.create_nn(pd_nn_out, Path(self.pp_model))
+
+        # post_pd_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
+        # post_pd_nn.setBlobPath(self.pp_model)
+        # pd_nn.out.link(post_pd_nn.input)
         post_pd_nn.out.link(manager_script.inputs['from_post_pd_nn'])
         
         # Define link to send result to host 
-        manager_out = self.device.pipeline.create(dai.node.XLinkOut)
-        manager_out.setStreamName("manager_out")
-        manager_script.outputs['host'].link(manager_out.input)
+        # manager_out = self.device.pipeline.create(dai.node.XLinkOut)
+        # manager_out.setStreamName("manager_out")
+        # manager_script.outputs['host'].link(manager_out.input)
+
+        # self.cropped_script = self.device.create_script(script_path=Path("./script.py"),
+        #     inputs={
+        #         'frames': self.device.streams.color_video
+        #     },
+        #     outputs={
+        #         'manip_cfg': self.manip.inputConfig,
+        #         'manip_img': self.manip.inputImage,
+        #     })
 
         # Define landmark pre processing image manip
         print("Creating Hand Landmark pre processing image manip...") 
         self.lm_input_length = 224
-        pre_lm_manip = self.device.pipeline.create(dai.node.ImageManip)
+        (pre_lm_manip, pre_lm_manip_stream) = self.device.create_image_manipulator()
         pre_lm_manip.setMaxOutputFrameSize(self.lm_input_length*self.lm_input_length*3)
         pre_lm_manip.setWaitForConfigInput(True)
         pre_lm_manip.inputImage.setQueueSize(1)
@@ -421,26 +506,43 @@ class HandTrackerBpf:
 
         # For debugging
         if self.trace & 4:
-            pre_lm_manip_out = self.device.pipeline.createXLinkOut()
-            pre_lm_manip_out.setStreamName("pre_lm_manip_out")
-            pre_lm_manip.out.link(pre_lm_manip_out.input)
+        # TODO(sachin): Add a callback for this. 
+            pre_lm_manip_stream.consume()
 
         manager_script.outputs['pre_lm_manip_cfg'].link(pre_lm_manip.inputConfig)
 
         # Define landmark model
-        print(f"Creating Hand Landmark Neural Network ({'1 thread' if self.lm_nb_threads == 1 else '2 threads'})...")          
-        lm_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
-        lm_nn.setBlobPath(self.lm_model)
+        print(f"Creating Hand Landmark Neural Network ({'1 thread' if self.lm_nb_threads == 1 else '2 threads'})...")   
+        (lm_nn, lm_nn_out, lm_nn_passthrough) = self.device.create_nn(pre_lm_manip_stream, Path(self.lm_model))
+       
+        # lm_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
+        # lm_nn.setBlobPath(self.lm_model)
         lm_nn.setNumInferenceThreads(self.lm_nb_threads)
-        pre_lm_manip.out.link(lm_nn.input)
+        # pre_lm_manip.out.link(lm_nn.input)
         lm_nn.out.link(manager_script.inputs['from_lm_nn'])
         
-        self.encoder = self.device.create_encoder(
-                        self.device.streams.color_still.output_node,
-                        fps=8,
-                        profile=dai.VideoEncoderProperties.Profile.MJPEG,
-                        quality=80,
-                    )
+        # self.encoder = self.device.create_encoder(
+        #                 self.device.streams.color_still.output_node,
+        #                 fps=8,
+        #                 profile=dai.VideoEncoderProperties.Profile.MJPEG,
+        #                 quality=80,
+        #             )
+        self.device.streams.create(
+                manager_script,
+                manager_script.outputs['host'],
+                stream_type=StreamType.BINARY,
+                rate=self.fps,
+                description="manager_script_host_out"
+            ).consume(partial(self.publish_hands, "color_ccm_frame", self.hands_publisher))
+        # if not self.laconic:
+            # TODO(sachin): add connections here
+            # cam_out = self.device.pipeline.createXLinkOut()
+            # cam_out.setStreamName("cam_out")
+            # cam_out.input.setQueueSize(1)
+            # cam_out.input.setBlocking(False)
+            # cam.video.link(cam_out.input)
+        self.device.streams.color_video.consume(partial(self.publish_frame, "color_ccm_frame", self.image_publisher))
+
         print("Pipeline created.")
         # return pipeline        
     
