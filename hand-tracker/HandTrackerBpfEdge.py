@@ -1,6 +1,7 @@
 import numpy as np
 from collections import namedtuple
 from functools import partial
+from datetime import timedelta, datetime
 
 import mediapipe_utils as mpu
 import depthai as dai
@@ -13,6 +14,7 @@ from string import Template
 import marshal
 from robothub_sdk import App, CameraResolution, StreamType, Config, router, Request, PUBLIC_DIR, Stream
 from robothub_sdk.device import Device
+from rclpy.node import Node, Publisher
 
 # Message imports
 from sensor_msgs.msg import Image
@@ -122,6 +124,7 @@ class HandTrackerBpf:
                 ):
         if node == None:
             raise ValueError("Exiting due to Missing ROS2 node argument. Create a rclpy.create_node() and pass it.")
+        self.node = node
         self.bridge = CvBridge()
         self.use_lm = use_lm
         if not use_lm:
@@ -186,15 +189,17 @@ class HandTrackerBpf:
             nanosec=int((sec - int(sec)) * 1_000_000_000),
         )
         return ros_ts
-
-    def publish_frame(self, frame_id, publisher, frame ) -> None:
-        timestamp = self.create_timestamp(frame.getTimestamp())
-        image_msg = self.bridge.cv2_to_imgmsg(frame)
+ 
+    def publish_frame(self, frame_id, publisher: Publisher, frame: dai.ImgFrame) -> None:
+        # timestamp = self.create_timestamp(frame.getTimestamp())
+        timestamp = self.node.get_clock().now().to_msg()
+        image_msg = self.bridge.cv2_to_imgmsg(frame.getCvFrame())
         image_msg.header = Header(stamp=timestamp, frame_id=frame_id)
         publisher.publish(image_msg)
 
     def publish_hands(self, frame_id, publisher, dai_hand) -> None:
-        timestamp = self.create_timestamp(dai_hand.getTimestamp())
+        # timestamp = self.create_timestamp(dai_hand.getTimestamp())
+        timestamp = self.node.get_clock().now().to_msg()
         res = marshal.loads(dai_hand.getData())
         handMsgs = HandLandmarkArray()
 
@@ -210,8 +215,8 @@ class HandTrackerBpf:
     
             for x, y in hand.landmarks:
                 loc = Pose2D()
-                loc.x = x
-                loc.y = y
+                loc.x = float(x)
+                loc.y = float(y)
                 local_msg.landmark.append(loc)
                 x, y, z = hand.xyz
                 local_msg.is_spatial = True
@@ -228,6 +233,7 @@ class HandTrackerBpf:
 
     def setup(self, device, resolution, internal_fps, xyz, internal_frame_height):
         self.device = device
+        self._clock_offset = timedelta(microseconds=(time.time() - time.monotonic()) * 1_000_000)
 
         # Note that here (in Host mode), specifying "rgb_laconic" has no effect
         # Color camera frames are systematically transferred to the host
@@ -431,9 +437,9 @@ class HandTrackerBpf:
             pre_body_manip_stream.consume()
 
         # Define landmark model
-        self.pre_body_manip_stream = Stream(pre_body_manip, pre_body_manip.out, stream_type=StreamType.FRAME, description="pre_body_manip_cfg Out" )
+        # self.pre_body_manip_stream = Stream(pre_body_manip, pre_body_manip.out, stream_type=StreamType.FRAME, description="pre_body_manip_cfg Out" )
         print("Creating Body Pose Detection Neural Network...")
-        (body_nn, body_nn_det_out, body_nn_det_passthrough) = self.device.create_nn(self.pre_body_manip_stream, Path(self.body_model))
+        (body_nn, body_nn_det_out, body_nn_det_passthrough) = self.device.create_nn(pre_body_manip_stream, Path(self.body_model))
 
         # body_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
         # body_nn.setBlobPath(self.body_model)
@@ -463,8 +469,8 @@ class HandTrackerBpf:
 
         # Define palm detection model
         print("Creating Palm Detection Neural Network...")
-        self.pre_pd_manip_stream = Stream(pre_pd_manip, pre_pd_manip.out, stream_type=StreamType.FRAME, description="pre_pd_manip_cfg Out" )
-        (pd_nn, pd_nn_out, pd_nn_passthrough) = self.device.create_nn(self.pre_body_manip_stream, Path(self.pd_model))
+        # self.pre_pd_manip_stream = Stream(pre_pd_manip, pre_pd_manip.out, stream_type=StreamType.FRAME, description="pre_pd_manip_cfg Out" )
+        (pd_nn, pd_nn_out, pd_nn_passthrough) = self.device.create_nn(pre_pd_manip_stream, Path(self.pd_model))
 
 
         # pd_nn = self.device.pipeline.create(dai.node.NeuralNetwork)
@@ -531,7 +537,7 @@ class HandTrackerBpf:
                 manager_script,
                 manager_script.outputs['host'],
                 stream_type=StreamType.BINARY,
-                rate=self.fps,
+                rate=27,
                 description="manager_script_host_out"
             ).consume(partial(self.publish_hands, "color_ccm_frame", self.hands_publisher))
         # if not self.laconic:

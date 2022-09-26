@@ -69,7 +69,7 @@ class HandTracker(App):
         self.renderer = HandTrackerRenderer(tracker=self.tracker)
     
     def on_update(self):
-        print('In Update Spinning...')
+        # print('In Update Spinning...')
         # if not self.gotQueues:
         #     # self.tracker.setupQueue()
         #     self.gotQueues = True
