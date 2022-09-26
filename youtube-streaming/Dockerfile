@@ -1,7 +1,6 @@
-FROM ghcr.io/luxonis/robothub-base-app:alpine-depthai-main
+FROM ghcr.io/luxonis/robothub-app:2022.269.1517-ubuntu22.04
 
-RUN apk update
-RUN apk add ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg
 
 ARG FILE=app.py
 ADD $FILE run.py
