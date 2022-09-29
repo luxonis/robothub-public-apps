@@ -1,0 +1,33 @@
+url: https://github.com/luxonis/robothub-apps
+name: IMU App
+image: luxonis/imu-app
+version: 1.0.0
+language: python
+description: App for outputting data from IMU.
+configuration:
+  sensors:
+      label: 'IMU sensors'
+      description: 'Which IMU sensors to use.'
+      type: 'multiple-choice'
+      default: [accelerometer, magnetometer, gyroscope, rotation]
+      options:
+        - 
+          key: accelerometer
+          label: 'Accelerometer'
+        -
+          key: magnetometer
+          label: 'Magnetometer'
+        -
+          key: gyroscope
+          label: 'Gyroscope'
+        -
+          key: rotation
+          label: 'Rotation'
+  rate:
+      label: 'Output rate'
+      description: 'How many times in a second to output.'
+      type: 'num-range'
+      step: 1
+      min: 1
+      max: 50
+      default: 1
