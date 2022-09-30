@@ -220,9 +220,9 @@ class HandTrackerBpf:
                 local_msg.landmark.append(loc)
                 x, y, z = hand.xyz
                 local_msg.is_spatial = True
-                local_msg.position.x = x
-                local_msg.position.y = y
-                local_msg.position.z = z
+                local_msg.position.x = x / 1000
+                local_msg.position.y = y / 1000
+                local_msg.position.z = z / 1000
             handMsgs.landmarks.append(local_msg)
             if hand.gesture == 'FIST':
                 fistFound = True
