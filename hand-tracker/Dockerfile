@@ -22,7 +22,7 @@ WORKDIR /home
 RUN mkdir -p dai_ws/src && cd dai_ws/src && git clone --depth=1 --branch hand-landmark  https://github.com/luxonis/depthai-ros.git
 RUN pwd
 RUN cd dai_ws && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash &&\ 
-                    catkin_make --only-pkg-with-deps depthai_ros_msgs"
+                    catkin_make -DCMAKE_INSTALL_PREFIX=/opt/ros/${ROS_DISTRO} install --only-pkg-with-deps depthai_ros_msgs"
 
 
 ADD ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -55,7 +55,7 @@ ADD template_manager_script_bpf_solo.py template_manager_script_bpf_solo.py
 ADD template_manager_script_bpf_duo.py template_manager_script_bpf_duo.py 
 
 # Ad as separate layer, since it changes often
-ENTRYPOINT ["docker-entrypoint.sh"]
+# ENTRYPOINT ["docker-entrypoint.sh"]
 ARG FILE=app.py
 ADD $FILE run.py    
 
