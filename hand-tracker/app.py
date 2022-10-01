@@ -12,8 +12,7 @@ import depthai as dai
 import numpy as np
 
 # ROS2 Imports
-import rclpy
-from rclpy.node import Node
+import rospy
 
 # Message imports
 from sensor_msgs.msg import Image
@@ -35,17 +34,20 @@ class HandTracker(App):
         self.gotQueues = False
         self.camera_controls = []
         
-    def on_exit(self):
-        self.node.destroy_node()
-        rclpy.shutdown() 
+    # def on_exit(self):
+        # self.node.destroy_node()
+        # rclpy.shutdown() 
 
     def on_configuration(self, old_configuration: Config):
+        print('Setting up device....')
         print("Configuration update", self.config.values())
-        rclpy.init()
-        self.node = rclpy.create_node('HandTracker')
+        # rclpy.init()
+        # self.node = rclpy.create_node('HandTracker')
+        rospy.init_node('HandTracker', anonymous=True)
+
         self.bridge = CvBridge()
-        self._ros_executor = rclpy.executors.MultiThreadedExecutor(num_threads=2)
-        self._ros_executor.add_node(self.node)
+        # self._ros_executor = rclpy.executors.MultiThreadedExecutor(num_threads=2)
+        # self._ros_executor.add_node(self.node)
 
         self.tracker = HandTrackerBpf(
             use_lm=True,
@@ -59,11 +61,11 @@ class HandTracker(App):
             single_hand_tolerance_thresh=self.config.single_hand_tolerance_thresh,
             lm_nb_threads=self.config.lm_nb_threads,
             stats=True,
-            node = self.node,
             trace=self.config.trace,
             )
 
     def on_setup(self, device):
+        print('Setting up device....')
         self.tracker.setup(device, self.config.resolution, self.config.fps, self.config.xyz, self.config.internal_frame_height)
         self.camera_controls.append(device.streams.color_control) # adding Capture control
         self.renderer = HandTrackerRenderer(tracker=self.tracker)
@@ -112,7 +114,7 @@ class HandTracker(App):
         # # self.overlayPublisher.publish(self.bridge.cv2_to_imgmsg(frame_vis))
         # self.handsPublisher.publish(handMsgs)
 
-        self._ros_executor.spin_once(timeout_sec=0)
+        # self._ros_executor.spin_once(timeout_sec=0)
         """ if fistFound:
             time.sleep(5)
             for camera_control in self.camera_controls:

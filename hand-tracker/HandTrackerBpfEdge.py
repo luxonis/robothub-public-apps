@@ -14,8 +14,8 @@ from string import Template
 import marshal
 from robothub_sdk import App, CameraResolution, StreamType, Config, router, Request, PUBLIC_DIR, Stream
 from robothub_sdk.device import Device
-from rclpy.node import Node, Publisher
 
+import rospy
 # Message imports
 from sensor_msgs.msg import Image
 from depthai_ros_msgs.msg import HandLandmarkArray, HandLandmark
@@ -119,12 +119,8 @@ class HandTrackerBpf:
                 use_same_image=True,
                 lm_nb_threads=2,
                 stats=False,
-                node = None,
                 trace=0
                 ):
-        if node == None:
-            raise ValueError("Exiting due to Missing ROS2 node argument. Create a rclpy.create_node() and pass it.")
-        self.node = node
         self.bridge = CvBridge()
         self.use_lm = use_lm
         if not use_lm:
@@ -177,8 +173,8 @@ class HandTrackerBpf:
         self.use_gesture = use_gesture
         self.single_hand_tolerance_thresh = single_hand_tolerance_thresh
         self.use_same_image = use_same_image
-        self.image_publisher = self.node.create_publisher(Image, 'depthai/image', 10)
-        self.hands_publisher = self.node.create_publisher(HandLandmarkArray, 'depthai/handss_tracklets', 10)
+        self.image_publisher = rospy.Publisher('depthai/image', Image, 10) 
+        self.hands_publisher = rospy.Publisher('depthai/handss_tracklets', HandLandmarkArray, 10)
         # self.overlayPublisher = self.node.create_publisher(Image, 'depthai/overlay_image', 10)
 
     def create_timestamp(self, ts: timedelta) -> builtin_interfaces.msg.Time:
@@ -192,14 +188,14 @@ class HandTrackerBpf:
  
     def publish_frame(self, frame_id, publisher: Publisher, frame: dai.ImgFrame) -> None:
         # timestamp = self.create_timestamp(frame.getTimestamp())
-        timestamp = self.node.get_clock().now().to_msg()
+        timestamp = rospy.Time.now()
         image_msg = self.bridge.cv2_to_imgmsg(frame.getCvFrame())
         image_msg.header = Header(stamp=timestamp, frame_id=frame_id)
         publisher.publish(image_msg)
 
     def publish_hands(self, frame_id, publisher, dai_hand) -> None:
         # timestamp = self.create_timestamp(dai_hand.getTimestamp())
-        timestamp = self.node.get_clock().now().to_msg()
+        timestamp = rospy.Time.now()
         res = marshal.loads(dai_hand.getData())
         handMsgs = HandLandmarkArray()
 
