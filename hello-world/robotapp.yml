@@ -1,4 +1,4 @@
-version: '1.1.0' # required
+version: '2.0.0' # required
 image: luxonis/basic-app # required
 name: RobotHub Basic App # required
 description: Display camera outputs and create detections at a fixed interval. # required
