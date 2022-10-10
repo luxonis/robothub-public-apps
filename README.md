@@ -32,11 +32,11 @@ RobotHub app is docker container with special **robotapp.yml** which defines ini
 4. Clone this repository
 ```bash
     git clone https://github.com/luxonis/robothub-public-apps.git
-    cd robothub-apps
+    cd robothub-public-apps
 ```
 5. Open hello-world example and upload the app to RobotHub
 ```bash
-    cd examples/hello-world
+    cd hello-world
     robothub app push .
 ```
 
