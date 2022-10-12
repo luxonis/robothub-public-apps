@@ -1,10 +1,9 @@
-FROM ghcr.io/luxonis/robothub-app:2022.274.1807-ros2noetic-custom-dev
-
+FROM ghcr.io/luxonis/robothub-app:2022.275.2318-ros2noetic-custom-dev
 # setup timezone
 
 # ENV ROS_DISTRO galactic
 RUN apt-get update && \
-    apt-get install -q -y --no-install-recommends ca-certificates ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-vision-msgs libboost-python-dev 
+    apt-get install -q -y --no-install-recommends ca-certificates ros-${ROS_DISTRO}-cv-bridge ros-${ROS_DISTRO}-vision-msgs libboost-python-dev python3-netifaces
 
 RUN apt-get install -y \
   build-essential \
@@ -24,6 +23,9 @@ RUN pwd
 RUN cd dai_ws && /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash &&\ 
                     catkin_make -DCMAKE_INSTALL_PREFIX=/opt/ros/${ROS_DISTRO} install --only-pkg-with-deps depthai_ros_msgs"
 
+# RUN python3 -m pip install netifaces
+
+WORKDIR /
 
 ADD ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

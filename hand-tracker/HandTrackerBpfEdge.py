@@ -22,7 +22,6 @@ from depthai_ros_msgs.msg import HandLandmarkArray, HandLandmark
 from std_msgs.msg import Header, ColorRGBA, String
 from geometry_msgs.msg import Pose2D
 from cv_bridge import CvBridge
-import builtin_interfaces.msg
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PALM_DETECTION_MODEL = str(SCRIPT_DIR / "models/palm_detection_sh4.blob")
@@ -173,10 +172,11 @@ class HandTrackerBpf:
         self.use_gesture = use_gesture
         self.single_hand_tolerance_thresh = single_hand_tolerance_thresh
         self.use_same_image = use_same_image
-        self.image_publisher = rospy.Publisher('depthai/image', Image, 10) 
-        self.hands_publisher = rospy.Publisher('depthai/handss_tracklets', HandLandmarkArray, 10)
+        self.image_publisher = rospy.Publisher('depthai/image', Image, queue_size=2) 
+        self.hands_publisher = rospy.Publisher('depthai/hand_tracklets', HandLandmarkArray, queue_size=10)
         # self.overlayPublisher = self.node.create_publisher(Image, 'depthai/overlay_image', 10)
 
+    """     
     def create_timestamp(self, ts: timedelta) -> builtin_interfaces.msg.Time:
         ts = ts + self._clock_offset
         sec = ts.total_seconds()
@@ -184,9 +184,9 @@ class HandTrackerBpf:
             sec=int(sec),
             nanosec=int((sec - int(sec)) * 1_000_000_000),
         )
-        return ros_ts
+        return ros_ts """
  
-    def publish_frame(self, frame_id, publisher: Publisher, frame: dai.ImgFrame) -> None:
+    def publish_frame(self, frame_id, publisher, frame: dai.ImgFrame) -> None:
         # timestamp = self.create_timestamp(frame.getTimestamp())
         timestamp = rospy.Time.now()
         image_msg = self.bridge.cv2_to_imgmsg(frame.getCvFrame())
